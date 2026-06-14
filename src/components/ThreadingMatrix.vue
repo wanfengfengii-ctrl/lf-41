@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { useWeaveStore } from '@/stores/weave'
 
 const store = useWeaveStore()
+const scrollRef = ref<HTMLDivElement | null>(null)
+const matrixRef = ref<HTMLDivElement | null>(null)
 
 const matrix = computed(() => store.threadingMatrix)
 const unthreadedSet = computed(() => new Set(store.validation.unthreadedWarps))
@@ -24,14 +26,66 @@ function cellClass(hIdx: number, wIdx: number) {
   const isUnthreaded = unthreadedSet.value.has(warpId)
   const hasFloatWarning = floatWarningSet.value.has(warpId)
   const isUnlinked = unlinkedSet.value.has(harnessId)
+  const isFocused =
+    (store.focusTarget.type === 'warp' && store.focusTarget.id === warpId) ||
+    (store.focusTarget.type === 'harness' && store.focusTarget.id === harnessId)
 
   return {
     'matrix-cell--selected': isSelected,
     'matrix-cell--unthreaded': isUnthreaded && !isSelected,
     'matrix-cell--float-warning': hasFloatWarning && isSelected,
     'matrix-cell--unlinked': isUnlinked && isSelected,
+    'matrix-cell--focused': isFocused,
   }
 }
+
+function colHeaderClass(warpId: number) {
+  return {
+    'col-header--unthreaded': unthreadedSet.value.has(warpId),
+    'col-header--float-warning': floatWarningSet.value.has(warpId),
+    'col-header--focused': store.focusTarget.type === 'warp' && store.focusTarget.id === warpId,
+  }
+}
+
+function rowHeaderClass(harnessId: number) {
+  return {
+    'row-header--unlinked': unlinkedSet.value.has(harnessId),
+    'row-header--focused': store.focusTarget.type === 'harness' && store.focusTarget.id === harnessId,
+  }
+}
+
+watch(
+  () => store.focusTarget,
+  (target) => {
+    if (target.type && target.id !== null) {
+      nextTick(() => {
+        if (scrollRef.value) {
+          const cellWidth = 32
+          const cellHeight = 32
+          const offset = 100
+
+          if (target.type === 'warp') {
+            const scrollLeft = (target.id - 1) * cellWidth - offset
+            scrollRef.value.scrollTo({
+              left: Math.max(0, scrollLeft),
+              behavior: 'smooth',
+            })
+          }
+
+          if (target.type === 'harness') {
+            const scrollTop = (target.id - 1) * cellHeight - offset
+            scrollRef.value.scrollTo({
+              left: 0,
+              top: Math.max(0, scrollTop),
+              behavior: 'smooth',
+            })
+          }
+        }
+      })
+    }
+  },
+  { deep: true }
+)
 </script>
 
 <template>
@@ -54,9 +108,10 @@ function cellClass(hIdx: number, wIdx: number) {
         <span class="legend-label">未关联踏板</span>
       </span>
     </div>
-    <div class="threading-matrix-scroll">
+    <div class="threading-matrix-scroll" ref="scrollRef">
       <div
         class="threading-matrix"
+        ref="matrixRef"
         :style="{
           gridTemplateColumns: `48px repeat(${store.warpEnds.length}, 30px)`,
           gridTemplateRows: `28px repeat(${store.harnesses.length}, 30px)`,
@@ -67,10 +122,7 @@ function cellClass(hIdx: number, wIdx: number) {
           v-for="warp in store.warpEnds"
           :key="'wh-' + warp.id"
           class="col-header"
-          :class="{
-            'col-header--unthreaded': unthreadedSet.has(warp.id),
-            'col-header--float-warning': floatWarningSet.has(warp.id),
-          }"
+          :class="colHeaderClass(warp.id)"
         >
           {{ warp.id }}
         </div>
@@ -78,7 +130,7 @@ function cellClass(hIdx: number, wIdx: number) {
         <template v-for="(harness, hIdx) in store.harnesses" :key="'row-' + harness.id">
           <div
             class="row-header"
-            :class="{ 'row-header--unlinked': unlinkedSet.has(harness.id) }"
+            :class="rowHeaderClass(harness.id)"
           >
             {{ harness.label }}
           </div>
@@ -206,6 +258,14 @@ function cellClass(hIdx: number, wIdx: number) {
   color: #e74c3c;
 }
 
+.col-header--focused {
+  background: #4a3520 !important;
+  color: #ffd700 !important;
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+  animation: pulse-focus 1.5s ease-in-out infinite;
+}
+
 .row-header {
   display: flex;
   align-items: center;
@@ -222,6 +282,14 @@ function cellClass(hIdx: number, wIdx: number) {
 .row-header--unlinked {
   background: #2a2518;
   color: #e67e22;
+}
+
+.row-header--focused {
+  background: #4a3520 !important;
+  color: #ffd700 !important;
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+  animation: pulse-focus 1.5s ease-in-out infinite;
 }
 
 .matrix-cell {
@@ -282,6 +350,12 @@ function cellClass(hIdx: number, wIdx: number) {
   border-color: #9a750a;
 }
 
+.matrix-cell--focused {
+  border-color: #ffd700 !important;
+  box-shadow: 0 0 12px rgba(255, 215, 0, 0.6) !important;
+  animation: pulse-focus 1.5s ease-in-out infinite;
+}
+
 .cell-indicator {
   display: block;
   width: 10px;
@@ -296,6 +370,15 @@ function cellClass(hIdx: number, wIdx: number) {
   }
   50% {
     box-shadow: 0 0 14px rgba(192, 57, 43, 0.8);
+  }
+}
+
+@keyframes pulse-focus {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(255, 215, 0, 0.8);
   }
 }
 </style>

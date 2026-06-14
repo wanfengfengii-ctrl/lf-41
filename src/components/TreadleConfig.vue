@@ -14,12 +14,14 @@
         添加踏板
       </NButton>
     </template>
-    <NScrollbar style="max-height: 420px">
+    <NScrollbar style="max-height: 420px" ref="scrollRef">
       <NSpace vertical :size="8">
         <div
           v-for="treadle in store.treadles"
           :key="treadle.id"
+          :id="`treadle-row-${treadle.id}`"
           class="treadle-row"
+          :class="treadleRowClass(treadle.id)"
         >
           <div class="treadle-label-col">
             <span class="treadle-label">{{ treadle.label }}</span>
@@ -68,6 +70,7 @@
 </template>
 
 <script setup lang="ts">
+import { ref, watch, nextTick } from 'vue'
 import { useWeaveStore } from '@/stores/weave'
 import { NCard, NCheckbox, NCheckboxGroup, NSpace, NButton, NScrollbar, useDialog, useMessage } from 'naive-ui'
 import { Link, Plus, Trash2, AlertTriangle } from 'lucide-vue-next'
@@ -75,6 +78,7 @@ import { Link, Plus, Trash2, AlertTriangle } from 'lucide-vue-next'
 const store = useWeaveStore()
 const dialog = useDialog()
 const message = useMessage()
+const scrollRef = ref<HTMLElement | null>(null)
 
 function onCheckboxChange(treadleId: number, newIds: number[]): void {
   const treadle = store.treadles.find((t) => t.id === treadleId)
@@ -111,6 +115,27 @@ function handleRemoveTreadle(treadleId: number) {
     },
   })
 }
+
+function treadleRowClass(treadleId: number) {
+  return {
+    'treadle-row--focused': store.focusTarget.type === 'treadle' && store.focusTarget.id === treadleId,
+  }
+}
+
+watch(
+  () => store.focusTarget,
+  (target) => {
+    if (target.type === 'treadle' && target.id !== null) {
+      nextTick(() => {
+        const row = document.getElementById(`treadle-row-${target.id}`)
+        if (row && scrollRef.value) {
+          row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      })
+    }
+  },
+  { deep: true }
+)
 </script>
 
 <style scoped>
@@ -138,6 +163,22 @@ function handleRemoveTreadle(treadleId: number) {
   border: 1px solid var(--color-border);
   border-radius: 6px;
   background: var(--color-bg-secondary);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.treadle-row--focused {
+  border-color: #ffd700 !important;
+  box-shadow: 0 0 12px rgba(255, 215, 0, 0.5);
+  animation: pulse-focus-treadle 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-focus-treadle {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(255, 215, 0, 0.7);
+  }
 }
 
 .treadle-label-col {

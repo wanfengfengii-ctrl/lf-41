@@ -157,3 +157,26 @@ export interface CompareViewData {
   }
   changes: string[]
 }
+
+export interface TreadleAnalysis {
+  id: number
+  label: string
+  linkedHarnessCount: number
+  linkedHarnessIds: number[]
+  raisedWarps: number
+  totalWarps: number
+  raiseRatio: number
+  hasInterleaving: boolean
+  floatWarnings: number
+  isEmpty: boolean
+  isFull: boolean
+}
+
+export interface DesignChange {
+  type: 'warp' | 'treadle' | 'harness'
+  id: number
+  changeType: 'added' | 'removed' | 'modified'
+  description: string
+  before?: any
+  after?: any
+}

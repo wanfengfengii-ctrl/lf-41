@@ -55,9 +55,13 @@ import {
   Info,
   Gauge,
   BarChart3,
+  Plus,
+  Minus,
+  Edit2,
+  Link,
 } from 'lucide-vue-next'
 import { useWeaveStore } from '@/stores/weave'
-import type { OptimizationSuggestion, ExportData, WeaveScore } from '@/types/weave'
+import type { OptimizationSuggestion, ExportData, WeaveScore, DesignChange } from '@/types/weave'
 
 use([
   RadarChart,
@@ -438,6 +442,120 @@ const previewScore = computed(() => {
 const totalExpectedGain = computed(() => {
   return store.optimizationSuggestions.reduce((sum, s) => sum + s.expectedScoreGain, 0)
 })
+
+function navigateToIssue(issue: any) {
+  if (!issue.location) return
+  const loc = issue.location
+  if (loc.type === 'warp' && loc.ids && loc.ids.length > 0) {
+    store.setFocus('warp', loc.ids[0])
+    message.info(`已定位到经线 ${loc.ids[0]}`)
+  } else if (loc.type === 'harness' && loc.ids && loc.ids.length > 0) {
+    store.setFocus('harness', loc.ids[0])
+    message.info(`已定位到综框 ${loc.ids[0]}`)
+  } else if (loc.type === 'treadle' && loc.ids && loc.ids.length > 0) {
+    store.setFocus('treadle', loc.ids[0])
+    message.info(`已定位到踏板 ${loc.ids[0]}`)
+  }
+}
+
+function navigateToHotspot(hotspot: any) {
+  store.setFocus(hotspot.type, hotspot.targetId)
+  message.info(`已定位到${hotspot.type === 'harness' ? '综框' : hotspot.type === 'warp' ? '经线' : '踏板'} ${hotspot.targetId}`)
+}
+
+function navigateToTreadle(treadleId: number) {
+  store.setFocus('treadle', treadleId)
+}
+
+function navigateToHarness(harnessId: number) {
+  store.setFocus('harness', harnessId)
+}
+
+const designChanges = computed<DesignChange[]>(() => {
+  if (!pendingSuggestion.value || !compareBeforeData.value) return []
+  const previewData = store.previewSuggestion(pendingSuggestion.value)
+  if (!previewData) return []
+  return store.compareDesigns(compareBeforeData.value, previewData)
+})
+
+const warpChanges = computed(() => designChanges.value.filter((c) => c.type === 'warp'))
+const treadleChanges = computed(() => designChanges.value.filter((c) => c.type === 'treadle'))
+const harnessChanges = computed(() => designChanges.value.filter((c) => c.type === 'harness'))
+
+const treadleRatioChartOption = computed(() => {
+  const analysis = store.treadleAnalysis
+  return {
+    tooltip: {
+      trigger: 'axis' as const,
+      backgroundColor: 'rgba(26, 26, 46, 0.95)',
+      borderColor: '#2a3a5c',
+      textStyle: { color: '#f5f0e8', fontSize: 12 },
+      formatter: (params: any) => {
+        const item = analysis[params[0].dataIndex]
+        return `${item.label}<br/>
+          提升经线: ${item.raisedWarps}/${item.totalWarps}<br/>
+          提升比例: ${(item.raiseRatio * 100).toFixed(1)}%<br/>
+          关联综框: ${item.linkedHarnessCount}个`
+      },
+    },
+    grid: {
+      top: 10,
+      bottom: 30,
+      left: 40,
+      right: 10,
+    },
+    xAxis: {
+      type: 'category' as const,
+      data: analysis.map((a) => a.label),
+      axisLabel: { color: '#a0aec0', fontSize: 9, rotate: analysis.length > 8 ? 30 : 0 },
+      axisLine: { lineStyle: { color: '#4a5568' } },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'value' as const,
+      max: 100,
+      axisLabel: { color: '#a0aec0', fontSize: 10, formatter: '{value}%' },
+      axisLine: { show: false },
+      splitLine: { lineStyle: { color: '#2d3748', type: 'dashed' as const } },
+    },
+    series: [
+      {
+        name: '提升比例',
+        type: 'bar' as const,
+        data: analysis.map((a) => Math.round(a.raiseRatio * 100)),
+        barMaxWidth: 32,
+        itemStyle: {
+          color: (params: any) => {
+            const item = analysis[params.dataIndex]
+            if (item.isEmpty) return '#f5222d'
+            if (item.isFull) return '#faad14'
+            return {
+              type: 'linear' as const,
+              x: 0, y: 0, x2: 0, y2: 1,
+              colorStops: [
+                { offset: 0, color: '#52c41a' },
+                { offset: 1, color: '#237804' },
+              ],
+            }
+          },
+          borderRadius: [4, 4, 0, 0],
+        },
+      },
+    ],
+  }
+})
+
+function getTreadleStatusType(analysisItem: any) {
+  if (analysisItem.isEmpty) return 'error'
+  if (analysisItem.isFull) return 'warning'
+  return 'success'
+}
+
+function getTreadleStatusText(analysisItem: any) {
+  if (analysisItem.isEmpty) return '空踏序'
+  if (analysisItem.isFull) return '全提升'
+  return '正常交织'
+}
 </script>
 
 <template>
@@ -580,11 +698,13 @@ const totalExpectedGain = computed(() => {
                 <div class="hotspot-title">
                   <AlertTriangle :size="14" style="color: var(--color-warning)" />
                   高风险热点 TOP 5
+                  <span class="hotspot-hint">点击可跳转定位</span>
                 </div>
                 <div
                   v-for="(hs, idx) in store.riskHotspots.slice(0, 5)"
                   :key="hs.id"
-                  class="hotspot-row"
+                  class="hotspot-row clickable"
+                  @click="navigateToHotspot(hs)"
                 >
                   <span class="hotspot-rank">{{ idx + 1 }}</span>
                   <span class="hotspot-type">
@@ -603,6 +723,7 @@ const totalExpectedGain = computed(() => {
                       style="width: 50px"
                     />
                   </div>
+                  <ChevronRight :size="12" class="hotspot-arrow" />
                 </div>
               </div>
             </div>
@@ -616,6 +737,8 @@ const totalExpectedGain = computed(() => {
                     v-for="(issue, idx) in store.sortedIssues"
                     :key="issue.id"
                     class="issue-card"
+                    :class="{ 'issue-card--clickable': issue.location }"
+                    @click="issue.location && navigateToIssue(issue)"
                   >
                     <div class="issue-rank" :class="issue.type">
                       {{ idx + 1 }}
@@ -633,16 +756,19 @@ const totalExpectedGain = computed(() => {
                         <span class="issue-priority">优先级 {{ issue.priority }}</span>
                       </div>
                       <div class="issue-desc">{{ issue.description }}</div>
-                      <div v-if="issue.location" class="issue-location">
+                      <div v-if="issue.location" class="issue-location clickable">
                         <Target :size="11" />
-                        定位:
-                        {{ issue.location.type === 'harness' ? '综框' : issue.location.type === 'warp' ? '经线' : issue.location.type === 'treadle' ? '踏板' : '范围' }}
-                        <span v-if="issue.location.ids">
-                          {{ issue.location.ids.join(', ') }}
+                        <span>点击定位:</span>
+                        <span class="location-text">
+                          {{ issue.location.type === 'harness' ? '综框' : issue.location.type === 'warp' ? '经线' : issue.location.type === 'treadle' ? '踏板' : '范围' }}
+                          <span v-if="issue.location.ids">
+                            {{ issue.location.ids.join(', ') }}
+                          </span>
+                          <span v-else-if="issue.location.startId !== undefined && issue.location.endId !== undefined">
+                            {{ issue.location.startId }} - {{ issue.location.endId }}
+                          </span>
                         </span>
-                        <span v-else-if="issue.location.startId !== undefined && issue.location.endId !== undefined">
-                          {{ issue.location.startId }} - {{ issue.location.endId }}
-                        </span>
+                        <ChevronRight :size="12" class="location-arrow" />
                       </div>
                     </div>
                   </div>
@@ -651,6 +777,97 @@ const totalExpectedGain = computed(() => {
               <div v-else class="empty-state">
                 <CheckCircle :size="20" style="color: var(--color-success)" />
                 <span>没有发现问题，工艺设计良好！</span>
+              </div>
+            </div>
+          </NTabPane>
+
+          <NTabPane name="treadle" tab="踏序分析">
+            <div class="treadle-analysis-section">
+              <div class="analysis-chart-wrap">
+                <VChart class="treadle-chart" :option="treadleRatioChartOption" autoresize />
+              </div>
+              <div class="treadle-analysis-stats">
+                <div class="stat-item">
+                  <span class="stat-label">总踏序步</span>
+                  <span class="stat-value">{{ store.treadleAnalysis.length }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">正常交织</span>
+                  <span class="stat-value success">
+                    {{ store.treadleAnalysis.filter((t: any) => t.hasInterleaving).length }}
+                  </span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">空踏序</span>
+                  <span class="stat-value error">
+                    {{ store.treadleAnalysis.filter((t: any) => t.isEmpty).length }}
+                  </span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">全提升</span>
+                  <span class="stat-value warning">
+                    {{ store.treadleAnalysis.filter((t: any) => t.isFull).length }}
+                  </span>
+                </div>
+              </div>
+              <NDivider style="margin: 10px 0" />
+              <div class="treadle-detail-list">
+                <div class="section-subtitle">
+                  <BarChart3 :size="13" style="color: var(--color-accent-gold)" />
+                  踏序步详情（点击可定位）
+                </div>
+                <NScrollbar style="max-height: 260px">
+                  <NSpace vertical :size="6">
+                    <div
+                      v-for="(item, idx) in store.treadleAnalysis"
+                      :key="item.id"
+                      class="treadle-detail-card"
+                      @click="navigateToTreadle(item.id)"
+                    >
+                      <div class="treadle-detail-header">
+                        <span class="treadle-detail-title">{{ item.label }}</span>
+                        <NTag size="tiny" :type="getTreadleStatusType(item)" round>
+                          {{ getTreadleStatusText(item) }}
+                        </NTag>
+                      </div>
+                      <div class="treadle-detail-body">
+                        <div class="detail-metric">
+                          <span class="metric-label">提升经线</span>
+                          <span class="metric-value">{{ item.raisedWarps }}/{{ item.totalWarps }}</span>
+                        </div>
+                        <div class="detail-metric">
+                          <span class="metric-label">提升比例</span>
+                          <span class="metric-value">{{ (item.raiseRatio * 100).toFixed(1) }}%</span>
+                        </div>
+                        <div class="detail-metric">
+                          <span class="metric-label">关联综框</span>
+                          <span class="metric-value">{{ item.linkedHarnessCount }} 个</span>
+                        </div>
+                        <div class="detail-metric">
+                          <span class="metric-label">浮线警告</span>
+                          <span class="metric-value" :class="{ 'text-warning': item.floatWarnings > 0 }">
+                            {{ item.floatWarnings }}
+                          </span>
+                        </div>
+                      </div>
+                      <div class="treadle-detail-harnesses" v-if="item.linkedHarnessIds.length > 0">
+                        <span class="harness-label">关联综框：</span>
+                        <span
+                          v-for="hId in item.linkedHarnessIds.slice(0, 8)"
+                          :key="hId"
+                          class="harness-tag"
+                          @click.stop="navigateToHarness(hId)"
+                        >
+                          {{ hId }}
+                        </span>
+                        <span v-if="item.linkedHarnessIds.length > 8" class="harness-more">
+                          +{{ item.linkedHarnessIds.length - 8 }}
+                        </span>
+                      </div>
+                      <ChevronRight :size="12" class="treadle-detail-arrow" />
+                    </div>
+                  </NSpace>
+                </NScrollbar>
               </div>
             </div>
           </NTabPane>
@@ -911,6 +1128,90 @@ const totalExpectedGain = computed(() => {
           <div class="summary-row">
             <TrendingUp :size="16" style="color: #52c41a" />
             <span><strong>等级变化：</strong>{{ gradeConfig[compareBeforeScore.grade].label }} → {{ gradeConfig[previewScore.grade].label }}</span>
+          </div>
+        </div>
+        <NDivider style="margin: 12px 0" />
+        <div class="compare-changes">
+          <div class="changes-header">
+            <BarChart3 :size="14" style="color: var(--color-accent-gold)" />
+            <span><strong>结构变化详情</strong></span>
+            <span class="changes-count">共 {{ designChanges.length }} 处变更</span>
+          </div>
+          <div v-if="designChanges.length > 0" class="changes-list">
+            <NScrollbar style="max-height: 240px">
+              <NSpace vertical :size="8">
+                <div v-if="warpChanges.length > 0" class="change-group">
+                  <div class="change-group-title">
+                    <Layers :size="12" />
+                    经线穿线变化 ({{ warpChanges.length }})
+                  </div>
+                  <div
+                    v-for="change in warpChanges"
+                    :key="`warp-${change.id}`"
+                    class="change-row"
+                    :class="change.changeType"
+                  >
+                    <span class="change-icon">
+                      <Plus v-if="change.changeType === 'added'" :size="12" />
+                      <Minus v-else-if="change.changeType === 'removed'" :size="12" />
+                      <Edit2 v-else :size="12" />
+                    </span>
+                    <span class="change-type-label">
+                      {{ change.changeType === 'added' ? '新增' : change.changeType === 'removed' ? '删除' : '修改' }}
+                    </span>
+                    <span class="change-desc">{{ change.description }}</span>
+                  </div>
+                </div>
+                <div v-if="treadleChanges.length > 0" class="change-group">
+                  <div class="change-group-title">
+                    <Link :size="12" />
+                    踏板关联变化 ({{ treadleChanges.length }})
+                  </div>
+                  <div
+                    v-for="change in treadleChanges"
+                    :key="`treadle-${change.id}`"
+                    class="change-row"
+                    :class="change.changeType"
+                  >
+                    <span class="change-icon">
+                      <Plus v-if="change.changeType === 'added'" :size="12" />
+                      <Minus v-else-if="change.changeType === 'removed'" :size="12" />
+                      <Edit2 v-else :size="12" />
+                    </span>
+                    <span class="change-type-label">
+                      {{ change.changeType === 'added' ? '新增' : change.changeType === 'removed' ? '删除' : '修改' }}
+                    </span>
+                    <span class="change-desc">{{ change.description }}</span>
+                  </div>
+                </div>
+                <div v-if="harnessChanges.length > 0" class="change-group">
+                  <div class="change-group-title">
+                    <Layers :size="12" />
+                    综框数量变化 ({{ harnessChanges.length }})
+                  </div>
+                  <div
+                    v-for="change in harnessChanges"
+                    :key="`harness-${change.id}`"
+                    class="change-row"
+                    :class="change.changeType"
+                  >
+                    <span class="change-icon">
+                      <Plus v-if="change.changeType === 'added'" :size="12" />
+                      <Minus v-else-if="change.changeType === 'removed'" :size="12" />
+                      <Edit2 v-else :size="12" />
+                    </span>
+                    <span class="change-type-label">
+                      {{ change.changeType === 'added' ? '增加' : change.changeType === 'removed' ? '减少' : '修改' }}
+                    </span>
+                    <span class="change-desc">{{ change.description }}</span>
+                  </div>
+                </div>
+              </NSpace>
+            </NScrollbar>
+          </div>
+          <div v-else class="no-changes">
+            <CheckCircle :size="18" style="color: var(--color-success)" />
+            <span>无具体结构变化</span>
           </div>
         </div>
       </div>
@@ -1581,5 +1882,377 @@ const totalExpectedGain = computed(() => {
 :deep(.n-tabs-tab) {
   font-size: 12px !important;
   padding: 8px 10px !important;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover {
+  opacity: 0.9;
+}
+
+.issue-card--clickable {
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.issue-card--clickable:hover {
+  border-color: var(--color-accent-gold);
+  transform: translateX(2px);
+}
+
+.issue-location.clickable {
+  color: var(--color-accent-gold);
+  font-weight: 500;
+}
+
+.location-text {
+  flex: 1;
+}
+
+.location-arrow {
+  opacity: 0.6;
+  transition: transform 0.2s;
+}
+
+.issue-card--clickable:hover .location-arrow {
+  transform: translateX(2px);
+  opacity: 1;
+}
+
+.hotspot-hint {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.hotspot-row.clickable {
+  transition: all 0.2s;
+}
+
+.hotspot-row.clickable:hover {
+  background: var(--color-bg-hover);
+  transform: translateX(2px);
+}
+
+.hotspot-arrow {
+  opacity: 0;
+  transition: all 0.2s;
+  color: var(--color-text-muted);
+}
+
+.hotspot-row.clickable:hover .hotspot-arrow {
+  opacity: 1;
+}
+
+.treadle-analysis-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analysis-chart-wrap {
+  width: 100%;
+}
+
+.treadle-chart {
+  width: 100%;
+  height: 140px;
+}
+
+.treadle-analysis-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  background: var(--color-bg-secondary);
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+}
+
+.stat-label {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.stat-value.success {
+  color: #52c41a;
+}
+
+.stat-value.warning {
+  color: #faad14;
+}
+
+.stat-value.error {
+  color: #f5222d;
+}
+
+.section-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 6px;
+}
+
+.treadle-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.treadle-detail-card {
+  position: relative;
+  padding: 10px 12px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.treadle-detail-card:hover {
+  border-color: var(--color-accent-gold);
+  transform: translateX(2px);
+}
+
+.treadle-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.treadle-detail-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-accent-gold);
+}
+
+.treadle-detail-body {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px 12px;
+  margin-bottom: 6px;
+}
+
+.detail-metric {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.metric-label {
+  color: var(--color-text-muted);
+}
+
+.metric-value {
+  color: var(--color-text-primary);
+  font-weight: 500;
+}
+
+.text-warning {
+  color: var(--color-warning) !important;
+}
+
+.treadle-detail-harnesses {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.harness-label {
+  color: var(--color-text-muted);
+}
+
+.harness-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  background: rgba(24, 144, 255, 0.15);
+  color: #1890ff;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.harness-tag:hover {
+  background: rgba(24, 144, 255, 0.3);
+}
+
+.harness-more {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.treadle-detail-arrow {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: all 0.2s;
+  color: var(--color-text-muted);
+}
+
+.treadle-detail-card:hover .treadle-detail-arrow {
+  opacity: 1;
+  right: 6px;
+}
+
+.compare-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.changes-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text-primary);
+}
+
+.changes-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-secondary);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.changes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.change-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.change-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 2px;
+}
+
+.change-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--color-bg-secondary);
+  border-left: 3px solid var(--color-border);
+}
+
+.change-row.added {
+  border-left-color: #52c41a;
+  background: rgba(82, 196, 26, 0.08);
+}
+
+.change-row.removed {
+  border-left-color: #f5222d;
+  background: rgba(245, 34, 45, 0.08);
+}
+
+.change-row.modified {
+  border-left-color: #1890ff;
+  background: rgba(24, 144, 255, 0.08);
+}
+
+.change-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.change-row.added .change-icon {
+  color: #52c41a;
+  background: rgba(82, 196, 26, 0.2);
+}
+
+.change-row.removed .change-icon {
+  color: #f5222d;
+  background: rgba(245, 34, 45, 0.2);
+}
+
+.change-row.modified .change-icon {
+  color: #1890ff;
+  background: rgba(24, 144, 255, 0.2);
+}
+
+.change-type-label {
+  font-size: 10px;
+  font-weight: 600;
+  width: 32px;
+  flex-shrink: 0;
+}
+
+.change-row.added .change-type-label {
+  color: #52c41a;
+}
+
+.change-row.removed .change-type-label {
+  color: #f5222d;
+}
+
+.change-row.modified .change-type-label {
+  color: #1890ff;
+}
+
+.change-desc {
+  flex: 1;
+  color: var(--color-text-primary);
+}
+
+.no-changes {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
 }
 </style>
