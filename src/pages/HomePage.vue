@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import ConfigPanel from '@/components/ConfigPanel.vue'
 import TreadleConfig from '@/components/TreadleConfig.vue'
 import ThreadingMatrix from '@/components/ThreadingMatrix.vue'
@@ -6,6 +7,11 @@ import WeavePreview from '@/components/WeavePreview.vue'
 import StatsPanel from '@/components/StatsPanel.vue'
 import ImportExport from '@/components/ImportExport.vue'
 import ScoreCenter from '@/components/ScoreCenter.vue'
+import LabCenter from '@/components/LabCenter.vue'
+import { NTabs, NTabPane } from 'naive-ui'
+import { Award, FlaskConical } from 'lucide-vue-next'
+
+const rightPanelTab = ref<'score' | 'lab'>('lab')
 </script>
 
 <template>
@@ -31,7 +37,26 @@ import ScoreCenter from '@/components/ScoreCenter.vue'
       </section>
 
       <aside class="sidebar-right">
-        <ScoreCenter />
+        <NTabs v-model:value="rightPanelTab" size="small" class="right-tabs">
+          <NTabPane name="lab" tab="智能推演实验室">
+            <template #label>
+              <span class="tab-label">
+                <FlaskConical :size="13" />
+                推演实验室
+              </span>
+            </template>
+            <LabCenter />
+          </NTabPane>
+          <NTabPane name="score" tab="评分与优化建议">
+            <template #label>
+              <span class="tab-label">
+                <Award :size="13" />
+                评分中心
+              </span>
+            </template>
+            <ScoreCenter />
+          </NTabPane>
+        </NTabs>
         <WeavePreview />
         <StatsPanel />
       </aside>
@@ -147,6 +172,32 @@ import ScoreCenter from '@/components/ScoreCenter.vue'
     flex: 1 1 300px;
     min-width: 280px;
   }
+}
+
+.right-tabs {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.right-tabs :deep(.n-tabs-tab) {
+  padding: 10px 14px;
+}
+
+.right-tabs :deep(.n-tabs-content) {
+  padding: 0;
+}
+
+.right-tabs :deep(.n-tab-pane) {
+  padding: 0;
 }
 
 @media (max-width: 768px) {

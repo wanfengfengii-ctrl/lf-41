@@ -180,3 +180,150 @@ export interface DesignChange {
   before?: any
   after?: any
 }
+
+export type MaterialType = 'cotton' | 'silk' | 'wool' | 'linen' | 'synthetic' | 'blend'
+
+export interface MaterialConfig {
+  type: MaterialType
+  label: string
+  recommendedMaxFloat: number
+  stiffness: number
+  strength: number
+  description: string
+}
+
+export interface SimulationParams {
+  targetScore: number
+  maxFloatLimit: number
+  harnessUtilizationMin: number
+  materialType: MaterialType
+  candidateCount: number
+  maxIterations: number
+  mutationRate: number
+}
+
+export interface SimulationStep {
+  iteration: number
+  design: ExportData
+  score: WeaveScore
+  appliedChanges: DesignChange[]
+  riskHotspots: RiskHotspot[]
+  timestamp: number
+}
+
+export interface CandidateScheme {
+  id: string
+  name: string
+  design: ExportData
+  score: WeaveScore
+  steps: SimulationStep[]
+  scoreHistory: number[]
+  isLocked: boolean
+  riskMigrationPath: RiskMigrationPoint[]
+  tags: string[]
+  createdAt: number
+}
+
+export interface RiskMigrationPoint {
+  step: number
+  type: 'harness' | 'warp' | 'treadle'
+  targetId: number
+  riskLevel: number
+  description: string
+  transition: 'resolved' | 'reduced' | 'introduced' | 'persisted'
+}
+
+export interface HeatmapDiffCell {
+  row: number
+  col: number
+  diffType: 'added' | 'removed' | 'modified' | 'unchanged'
+  beforeValue: number
+  afterValue: number
+}
+
+export interface StructureHeatmap {
+  baseMatrix: number[][]
+  targetMatrix: number[][]
+  diffCells: HeatmapDiffCell[]
+  diffSummary: {
+    added: number
+    removed: number
+    modified: number
+    unchanged: number
+  }
+}
+
+export interface ExperimentReport {
+  id: string
+  title: string
+  createdAt: number
+  params: SimulationParams
+  baselineDesign: ExportData
+  baselineScore: WeaveScore
+  candidates: CandidateScheme[]
+  bestCandidateId: string | null
+  totalIterations: number
+  executionTimeMs: number
+  notes?: string
+}
+
+export const MATERIAL_PRESETS: Record<MaterialType, MaterialConfig> = {
+  cotton: {
+    type: 'cotton',
+    label: '棉',
+    recommendedMaxFloat: 8,
+    stiffness: 0.5,
+    strength: 0.7,
+    description: '通用性强，适合中长浮线'
+  },
+  silk: {
+    type: 'silk',
+    label: '丝绸',
+    recommendedMaxFloat: 6,
+    stiffness: 0.3,
+    strength: 0.5,
+    description: '细腻柔软，适合短浮线精细组织'
+  },
+  wool: {
+    type: 'wool',
+    label: '羊毛',
+    recommendedMaxFloat: 10,
+    stiffness: 0.6,
+    strength: 0.6,
+    description: '蓬松有弹性，可承受较长浮线'
+  },
+  linen: {
+    type: 'linen',
+    label: '亚麻',
+    recommendedMaxFloat: 7,
+    stiffness: 0.8,
+    strength: 0.8,
+    description: '挺括硬挺，适合中等浮线'
+  },
+  synthetic: {
+    type: 'synthetic',
+    label: '化纤',
+    recommendedMaxFloat: 12,
+    stiffness: 0.4,
+    strength: 0.9,
+    description: '强度高，适合长浮线复杂组织'
+  },
+  blend: {
+    type: 'blend',
+    label: '混纺',
+    recommendedMaxFloat: 9,
+    stiffness: 0.55,
+    strength: 0.75,
+    description: '综合性能均衡，适用范围广'
+  }
+}
+
+export const DEFAULT_SIMULATION_PARAMS: SimulationParams = {
+  targetScore: 85,
+  maxFloatLimit: 6,
+  harnessUtilizationMin: 0.7,
+  materialType: 'cotton',
+  candidateCount: 5,
+  maxIterations: 20,
+  mutationRate: 0.3
+}
