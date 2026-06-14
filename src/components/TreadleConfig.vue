@@ -1,0 +1,178 @@
+<template>
+  <NCard class="treadle-config" :bordered="true">
+    <template #header>
+      <div class="card-header">
+        <Link :size="18" />
+        <span>踏板关联配置</span>
+      </div>
+    </template>
+    <template #header-extra>
+      <NButton size="small" type="primary" @click="store.addTreadle()">
+        <template #icon>
+          <Plus :size="14" />
+        </template>
+        添加踏板
+      </NButton>
+    </template>
+    <NScrollbar style="max-height: 420px">
+      <NSpace vertical :size="8">
+        <div
+          v-for="treadle in store.treadles"
+          :key="treadle.id"
+          class="treadle-row"
+        >
+          <div class="treadle-label-col">
+            <span class="treadle-label">{{ treadle.label }}</span>
+            <NButton
+              size="tiny"
+              quaternary
+              type="error"
+              @click="store.removeTreadle(treadle.id)"
+            >
+              <template #icon>
+                <Trash2 :size="12" />
+              </template>
+            </NButton>
+          </div>
+          <div class="treadle-harnesses">
+            <NCheckboxGroup
+              :value="treadle.harnessIds"
+              @update:value="(ids: number[]) => onCheckboxChange(treadle.id, ids)"
+            >
+              <div class="harness-grid">
+                <div
+                  v-for="harness in store.harnesses"
+                  :key="harness.id"
+                  class="harness-check-item"
+                >
+                  <NCheckbox :value="harness.id">
+                    <template #default>
+                      <span class="harness-check-label">{{ harness.id }}</span>
+                    </template>
+                  </NCheckbox>
+                </div>
+              </div>
+            </NCheckboxGroup>
+          </div>
+          <div v-if="treadle.harnessIds.length === 0" class="treadle-empty-warning">
+            未关联任何综框
+          </div>
+        </div>
+      </NSpace>
+    </NScrollbar>
+    <div v-if="store.validation.unlinkedHarnesses.length > 0" class="unlinked-summary">
+      <AlertTriangle :size="14" class="warning-icon" />
+      <span>综框 {{ store.validation.unlinkedHarnesses.join(', ') }} 未关联踏板</span>
+    </div>
+  </NCard>
+</template>
+
+<script setup lang="ts">
+import { useWeaveStore } from '@/stores/weave'
+import { NCard, NCheckbox, NCheckboxGroup, NSpace, NButton, NScrollbar } from 'naive-ui'
+import { Link, Plus, Trash2, AlertTriangle } from 'lucide-vue-next'
+
+const store = useWeaveStore()
+
+function onCheckboxChange(treadleId: number, newIds: number[]): void {
+  const treadle = store.treadles.find((t) => t.id === treadleId)
+  if (!treadle) return
+  const oldIds = new Set(treadle.harnessIds)
+  for (const id of newIds) {
+    if (!oldIds.has(id)) {
+      store.toggleTreadleHarness(treadleId, id)
+    }
+  }
+  const newIdsSet = new Set(newIds)
+  for (const id of treadle.harnessIds) {
+    if (!newIdsSet.has(id)) {
+      store.toggleTreadleHarness(treadleId, id)
+    }
+  }
+}
+</script>
+
+<style scoped>
+.treadle-config {
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.card-header svg {
+  color: var(--color-accent-gold);
+}
+
+.treadle-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-secondary);
+}
+
+.treadle-label-col {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.treadle-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-accent-gold);
+}
+
+.treadle-harnesses {
+  padding-left: 4px;
+}
+
+.harness-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  gap: 2px 8px;
+}
+
+.harness-check-item {
+  display: flex;
+  align-items: center;
+}
+
+.harness-check-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.treadle-empty-warning {
+  font-size: 11px;
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.unlinked-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--color-warning-bg);
+  border: 1px solid rgba(230, 126, 34, 0.3);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--color-warning);
+}
+
+.warning-icon {
+  flex-shrink: 0;
+}
+</style>

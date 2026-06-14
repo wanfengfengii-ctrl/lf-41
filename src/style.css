@@ -1,0 +1,93 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&display=swap');
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+:root {
+  --color-bg-deep: #0f0f1a;
+  --color-bg-primary: #1a1a2e;
+  --color-bg-secondary: #16213e;
+  --color-bg-card: #1e2a45;
+  --color-bg-hover: #253354;
+  --color-accent-gold: #e8b84b;
+  --color-accent-gold-dim: #c49a3a;
+  --color-text-primary: #f5f0e8;
+  --color-text-secondary: #a8a4b8;
+  --color-text-muted: #6b687a;
+  --color-error: #c0392b;
+  --color-error-bg: rgba(192, 57, 43, 0.15);
+  --color-warning: #e67e22;
+  --color-warning-bg: rgba(230, 126, 34, 0.15);
+  --color-success: #27ae60;
+  --color-success-bg: rgba(39, 174, 96, 0.15);
+  --color-harness-selected: #e8b84b;
+  --color-harness-unselected: transparent;
+  --color-border: #2a3a5c;
+  --color-border-accent: #3a4a6c;
+
+  font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg-deep);
+  color: var(--color-text-primary);
+  min-height: 100vh;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-accent);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-gold-dim);
+}
+
+.n-input-number .n-input {
+  background-color: var(--color-bg-card) !important;
+}
+
+.n-card {
+  --n-color: var(--color-bg-card) !important;
+  --n-border-color: var(--color-border) !important;
+}
+
+.n-collapse-item {
+  --n-title-text-color: var(--color-text-primary) !important;
+}
+
+.n-checkbox {
+  --n-color: var(--color-bg-card) !important;
+  --n-border: 1px solid var(--color-border) !important;
+}
+
+.n-tag {
+  --n-border-radius: 4px !important;
+}
+
+.n-button--primary-type {
+  --n-color: var(--color-accent-gold) !important;
+  --n-color-hover: var(--color-accent-gold-dim) !important;
+  --n-text-color: var(--color-bg-deep) !important;
+}
