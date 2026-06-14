@@ -11,16 +11,12 @@ import type {
   ExperimentReport,
   DesignChange,
   RiskHotspot,
-  WarpEnd,
-  Treadle,
-  Harness,
-  ValidationResult,
-  DesignStats,
-  FloatWarning,
   MaterialConfig,
 } from '@/types/weave'
 import { calculateWeaveScore, generateRiskHotspots } from './scoring'
 import { MATERIAL_PRESETS } from '@/types/weave'
+import { computeWeaveMatrix, computeFloatWarnings } from './matrix'
+import { validateDesign, computeStats } from './validation'
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
@@ -49,173 +45,37 @@ export function designToWeaveDesign(data: ExportData): WeaveDesign {
   }
 }
 
-export function computeWeaveMatrix(data: ExportData): number[][] {
-  const treads = data.treadles
-  const warps = data.warpEnds
-  if (treads.length === 0 || warps.length === 0) return []
-  const rows = treads.length
-  const cols = warps.length
-  const matrix: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0))
-  for (let t = 0; t < treads.length; t++) {
-    const linkedH = new Set(treads[t].harnessIds)
-    for (let w = 0; w < warps.length; w++) {
-      const wh = warps[w].harnessId
-      if (wh !== null && linkedH.has(wh)) {
-        matrix[t][w] = 1
-      }
-    }
-  }
-  return matrix
-}
-
-function computeFloatWarnings(matrix: number[][], maxFloat: number): FloatWarning[] {
-  const warnings: FloatWarning[] = []
-  if (matrix.length === 0 || matrix[0].length === 0) return warnings
-  const rows = matrix.length
-  const cols = matrix[0].length
-  const fullSameRows = new Set<number>()
-  for (let t = 0; t < rows; t++) {
-    const first = matrix[t][0]
-    let allSame = true
-    for (let w = 1; w < cols; w++) {
-      if (matrix[t][w] !== first) {
-        allSame = false
-        break
-      }
-    }
-    if (allSame) fullSameRows.add(t)
-  }
-  const fullSameCols = new Set<number>()
-  for (let w = 0; w < cols; w++) {
-    const first = matrix[0][w]
-    let allSame = true
-    for (let t = 1; t < rows; t++) {
-      if (matrix[t][w] !== first) {
-        allSame = false
-        break
-      }
-    }
-    if (allSame) fullSameCols.add(w)
-  }
-  for (let t = 0; t < rows; t++) {
-    if (fullSameRows.has(t)) continue
-    let start = -1
-    for (let w = 0; w <= cols; w++) {
-      const isRaised = w < cols && matrix[t][w] === 1
-      if (isRaised) {
-        if (start === -1) start = w
-      } else {
-        if (start !== -1) {
-          const length = w - start
-          if (length > maxFloat) {
-            warnings.push({ startWarp: start + 1, endWarp: w, type: 'weft', length })
-          }
-          start = -1
-        }
-      }
-    }
-  }
-  for (let w = 0; w < cols; w++) {
-    if (fullSameCols.has(w)) continue
-    let start = -1
-    for (let t = 0; t <= rows; t++) {
-      const isRaised = t < rows && matrix[t][w] === 1
-      if (isRaised) {
-        if (start === -1) start = t
-      } else {
-        if (start !== -1) {
-          const length = t - start
-          if (length > maxFloat) {
-            warnings.push({ startWarp: w + 1, endWarp: w + 1, type: 'warp', length })
-          }
-          start = -1
-        }
-      }
-    }
-  }
-  return warnings
-}
+export { computeWeaveMatrix }
 
 export function evaluateDesign(data: ExportData): {
   score: WeaveScore
-  validation: ValidationResult
-  stats: DesignStats
+  validation: ReturnType<typeof validateDesign>
+  stats: ReturnType<typeof computeStats>
   riskHotspots: RiskHotspot[]
-  floatWarnings: FloatWarning[]
+  floatWarnings: ReturnType<typeof computeFloatWarnings>
 } {
   const design = designToWeaveDesign(data)
-  const matrix = computeWeaveMatrix(data)
+  const matrix = computeWeaveMatrix(data.treadles, data.warpEnds)
   const floatWarnings = computeFloatWarnings(matrix, data.maxFloatLength)
 
-  const errors: string[] = []
-  const warnings: string[] = []
-  const unthreadedWarps: number[] = []
-  const duplicateThreadedWarps: Record<number, number[]> = {}
-  const unlinkedHarnesses: number[] = []
+  const validation = validateDesign(
+    data.harnessCount,
+    data.warpCount,
+    data.harnesses,
+    data.warpEnds,
+    data.treadles,
+    data.maxFloatLength
+  )
 
-  const harnessIds = new Set(data.harnesses.map((h) => h.id))
-  for (const warp of data.warpEnds) {
-    if (warp.harnessId === null) {
-      unthreadedWarps.push(warp.id)
-    } else if (!harnessIds.has(warp.harnessId)) {
-      errors.push(`经线 ${warp.id} 穿过了不存在的综框`)
-    }
-  }
-  if (unthreadedWarps.length > 0) {
-    errors.push(`经线 ${unthreadedWarps.join(', ')} 未穿过任何综框`)
-  }
+  const stats = computeStats(
+    data.harnesses,
+    data.warpEnds,
+    validation.floatWarnings,
+    validation
+  )
 
-  const linkedHarnessIds = new Set<number>()
-  for (const tread of data.treadles) {
-    tread.harnessIds.forEach((id) => linkedHarnessIds.add(id))
-  }
-  for (const harness of data.harnesses) {
-    if (!linkedHarnessIds.has(harness.id)) {
-      unlinkedHarnesses.push(harness.id)
-    }
-  }
-
-  const warpUsage: Record<number, number> = {}
-  for (const harness of data.harnesses) {
-    warpUsage[harness.id] = 0
-  }
-  let threadedCount = 0
-  for (const warp of data.warpEnds) {
-    if (warp.harnessId !== null && warpUsage[warp.harnessId] !== undefined) {
-      warpUsage[warp.harnessId]++
-      threadedCount++
-    }
-  }
-
-  const maxWarp = floatWarnings.filter((f) => f.type === 'warp').reduce((max, f) => Math.max(max, f.length), 0)
-  const maxWeft = floatWarnings.filter((f) => f.type === 'weft').reduce((max, f) => Math.max(max, f.length), 0)
-  const totalFloat = floatWarnings.reduce((sum, f) => sum + f.length, 0)
-  const avgFloat = floatWarnings.length > 0 ? totalFloat / floatWarnings.length : 0
-
-  const validation: ValidationResult = {
-    isValid: errors.length === 0,
-    errors,
-    warnings,
-    floatWarnings,
-    unthreadedWarps,
-    duplicateThreadedWarps,
-    unlinkedHarnesses,
-  }
-
-  const stats: DesignStats = {
-    warpUsage,
-    maxWarpFloat: maxWarp,
-    maxWeftFloat: maxWeft,
-    averageFloatLength: Math.round(avgFloat * 100) / 100,
-    errorCount: errors.length,
-    warningCount: warnings.length,
-    totalWarps: data.warpEnds.length,
-    threadedWarps: threadedCount,
-    unthreadedWarps: data.warpEnds.length - threadedCount,
-  }
-
-  const score = calculateWeaveScore(design, validation, stats, floatWarnings)
-  const riskHotspots = generateRiskHotspots(design, validation, stats, floatWarnings)
+  const score = calculateWeaveScore(design, validation, stats, validation.floatWarnings)
+  const riskHotspots = generateRiskHotspots(design, validation, stats, validation.floatWarnings)
 
   return { score, validation, stats, riskHotspots, floatWarnings }
 }
@@ -503,8 +363,8 @@ export function computeStructureHeatmap(
   base: ExportData,
   target: ExportData
 ): StructureHeatmap {
-  const baseMatrix = computeWeaveMatrix(base)
-  const targetMatrix = computeWeaveMatrix(target)
+  const baseMatrix = computeWeaveMatrix(base.treadles, base.warpEnds)
+  const targetMatrix = computeWeaveMatrix(target.treadles, target.warpEnds)
 
   const rows = Math.max(baseMatrix.length, targetMatrix.length)
   const cols = Math.max(baseMatrix[0]?.length || 0, targetMatrix[0]?.length || 0)
