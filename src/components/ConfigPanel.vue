@@ -83,7 +83,7 @@
         <span>设计验证通过</span>
       </div>
 
-      <NButton size="small" @click="store.resetDesign()" class="reset-btn">
+      <NButton size="small" @click="handleReset" class="reset-btn">
         <template #icon>
           <RotateCcw :size="14" />
         </template>
@@ -94,11 +94,27 @@
 </template>
 
 <script setup lang="ts">
-import { NCard, NInputNumber, NSpace, NDivider, NButton, NTag } from 'naive-ui'
+import { NCard, NInputNumber, NSpace, NDivider, NButton, NTag, useDialog, useMessage } from 'naive-ui'
 import { Settings, RotateCcw, AlertCircle, AlertTriangle, CheckCircle } from 'lucide-vue-next'
 import { useWeaveStore } from '@/stores/weave'
 
 const store = useWeaveStore()
+const dialog = useDialog()
+const message = useMessage()
+
+function handleReset() {
+  dialog.warning({
+    title: '确认重置设计',
+    content: '此操作将清空所有当前配置（穿线、踏板、参数），恢复为默认设计。该操作不可撤销，是否继续？',
+    positiveText: '确认重置',
+    negativeText: '取消',
+    positiveButtonProps: { type: 'error' },
+    onPositiveClick: () => {
+      store.resetDesign()
+      message.success('设计已重置为默认值')
+    },
+  })
+}
 </script>
 
 <style scoped>

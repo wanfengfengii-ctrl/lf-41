@@ -27,7 +27,7 @@
               size="tiny"
               quaternary
               type="error"
-              @click="store.removeTreadle(treadle.id)"
+              @click="handleRemoveTreadle(treadle.id)"
             >
               <template #icon>
                 <Trash2 :size="12" />
@@ -69,10 +69,12 @@
 
 <script setup lang="ts">
 import { useWeaveStore } from '@/stores/weave'
-import { NCard, NCheckbox, NCheckboxGroup, NSpace, NButton, NScrollbar } from 'naive-ui'
+import { NCard, NCheckbox, NCheckboxGroup, NSpace, NButton, NScrollbar, useDialog, useMessage } from 'naive-ui'
 import { Link, Plus, Trash2, AlertTriangle } from 'lucide-vue-next'
 
 const store = useWeaveStore()
+const dialog = useDialog()
+const message = useMessage()
 
 function onCheckboxChange(treadleId: number, newIds: number[]): void {
   const treadle = store.treadles.find((t) => t.id === treadleId)
@@ -89,6 +91,25 @@ function onCheckboxChange(treadleId: number, newIds: number[]): void {
       store.toggleTreadleHarness(treadleId, id)
     }
   }
+}
+
+function handleRemoveTreadle(treadleId: number) {
+  const treadle = store.treadles.find((t) => t.id === treadleId)
+  if (!treadle) return
+  const linkedCount = treadle.harnessIds.length
+  dialog.warning({
+    title: '确认删除踏板',
+    content: linkedCount > 0
+      ? `确定要删除「${treadle.label}」吗？该踏板关联了 ${linkedCount} 个综框，删除后将无法恢复。`
+      : `确定要删除「${treadle.label}」吗？删除后将无法恢复。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    positiveButtonProps: { type: 'error' },
+    onPositiveClick: () => {
+      store.removeTreadle(treadleId)
+      message.success(`已删除 ${treadle.label}`)
+    },
+  })
 }
 </script>
 
