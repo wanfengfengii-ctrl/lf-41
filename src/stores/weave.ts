@@ -9,7 +9,18 @@ import type {
   ValidationResult,
   DesignStats,
   ExportData,
+  WeaveScore,
+  RiskHotspot,
+  SortedIssue,
+  OptimizationSuggestion,
+  HistorySnapshot,
 } from '@/types/weave'
+import {
+  calculateWeaveScore,
+  generateRiskHotspots,
+  generateSortedIssues,
+  generateOptimizationSuggestions,
+} from '@/lib/scoring'
 
 function createHarnesses(count: number): Harness[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -277,6 +288,227 @@ export const useWeaveStore = defineStore('weave', () => {
     }
   })
 
+  const currentDesign = computed<WeaveDesign>(() => ({
+    harnessCount: harnessCount.value,
+    warpCount: warpCount.value,
+    maxFloatLength: maxFloatLength.value,
+    harnesses: harnesses.value,
+    warpEnds: warpEnds.value,
+    treadles: treadles.value,
+  }))
+
+  const score = computed<WeaveScore>(() => {
+    return calculateWeaveScore(
+      currentDesign.value,
+      validation.value,
+      stats.value,
+      filteredFloatWarnings.value
+    )
+  })
+
+  const riskHotspots = computed<RiskHotspot[]>(() => {
+    return generateRiskHotspots(
+      currentDesign.value,
+      validation.value,
+      stats.value,
+      filteredFloatWarnings.value
+    )
+  })
+
+  const sortedIssues = computed<SortedIssue[]>(() => {
+    return generateSortedIssues(validation.value, score.value)
+  })
+
+  const optimizationSuggestions = computed<OptimizationSuggestion[]>(() => {
+    return generateOptimizationSuggestions(
+      currentDesign.value,
+      validation.value,
+      stats.value,
+      applySuggestionChanges
+    )
+  })
+
+  const undoStack = ref<HistorySnapshot[]>([])
+  const redoStack = ref<HistorySnapshot[]>([])
+  const MAX_HISTORY = 50
+
+  function createSnapshot(description: string): HistorySnapshot {
+    return {
+      id: Math.random().toString(36).slice(2),
+      timestamp: Date.now(),
+      description,
+      data: exportDesign(),
+      scoreSnapshot: JSON.parse(JSON.stringify(score.value)),
+    }
+  }
+
+  function saveHistory(description: string) {
+    const snapshot = createSnapshot(description)
+    undoStack.value.push(snapshot)
+    if (undoStack.value.length > MAX_HISTORY) {
+      undoStack.value.shift()
+    }
+    redoStack.value = []
+  }
+
+  const canUndo = computed(() => undoStack.value.length > 0)
+  const canRedo = computed(() => redoStack.value.length > 0)
+
+  function undo() {
+    if (undoStack.value.length === 0) return
+    const currentSnapshot = createSnapshot('撤销前')
+    redoStack.value.push(currentSnapshot)
+    const prev = undoStack.value.pop()!
+    restoreFromData(prev.data)
+  }
+
+  function redo() {
+    if (redoStack.value.length === 0) return
+    const currentSnapshot = createSnapshot('重做前')
+    undoStack.value.push(currentSnapshot)
+    const next = redoStack.value.pop()!
+    restoreFromData(next.data)
+  }
+
+  function restoreFromData(data: ExportData) {
+    harnessCount.value = data.harnessCount
+    warpCount.value = data.warpCount
+    maxFloatLength.value = data.maxFloatLength
+    harnesses.value = data.harnesses.map((h) => ({ ...h }))
+    warpEnds.value = data.warpEnds.map((w) => ({ ...w }))
+    treadles.value = data.treadles.map((t) => ({ ...t, harnessIds: [...t.harnessIds] }))
+  }
+
+  function applySuggestionChanges(changes: {
+    warpEnds?: WarpEnd[]
+    treadles?: Treadle[]
+    harnessCount?: number
+  }) {
+    saveHistory('应用优化建议')
+    if (changes.warpEnds) {
+      warpEnds.value = changes.warpEnds.map((w) => ({ ...w }))
+    }
+    if (changes.treadles) {
+      treadles.value = changes.treadles.map((t) => ({ ...t, harnessIds: [...t.harnessIds] }))
+    }
+    if (changes.harnessCount !== undefined) {
+      setHarnessCount(changes.harnessCount)
+    }
+  }
+
+  function applyAllSuggestions() {
+    saveHistory('一键应用所有优化建议')
+    for (const suggestion of optimizationSuggestions.value) {
+      if (suggestion.previewData?.warpEnds) {
+        warpEnds.value = suggestion.previewData.warpEnds.map((w) => ({ ...w }))
+      }
+      if (suggestion.previewData?.treadles) {
+        treadles.value = suggestion.previewData.treadles.map((t) => ({
+          ...t,
+          harnessIds: [...t.harnessIds],
+        }))
+      }
+    }
+  }
+
+  function previewSuggestion(suggestion: OptimizationSuggestion): ExportData | null {
+    if (!suggestion.previewData) return null
+    const base = exportDesign()
+    return {
+      ...base,
+      warpEnds: suggestion.previewData.warpEnds
+        ? suggestion.previewData.warpEnds.map((w) => ({ ...w }))
+        : base.warpEnds,
+      treadles: suggestion.previewData.treadles
+        ? suggestion.previewData.treadles.map((t) => ({ ...t, harnessIds: [...t.harnessIds] }))
+        : base.treadles,
+    }
+  }
+
+  function calculateScoreForData(data: ExportData): WeaveScore {
+    const design: WeaveDesign = {
+      harnessCount: data.harnessCount,
+      warpCount: data.warpCount,
+      maxFloatLength: data.maxFloatLength,
+      harnesses: data.harnesses,
+      warpEnds: data.warpEnds,
+      treadles: data.treadles,
+    }
+
+    const linkedHarnessIds = new Set<number>()
+    for (const tread of data.treadles) {
+      tread.harnessIds.forEach((id) => linkedHarnessIds.add(id))
+    }
+    const unlinkedHarnesses: number[] = []
+    for (const harness of data.harnesses) {
+      if (!linkedHarnessIds.has(harness.id)) {
+        unlinkedHarnesses.push(harness.id)
+      }
+    }
+
+    const rows = data.treadles.length
+    const cols = data.warpEnds.length
+    const matrix: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0))
+    for (let t = 0; t < data.treadles.length; t++) {
+      const linkedH = new Set(data.treadles[t].harnessIds)
+      for (let w = 0; w < data.warpEnds.length; w++) {
+        const wh = data.warpEnds[w].harnessId
+        if (wh !== null && linkedH.has(wh)) {
+          matrix[t][w] = 1
+        }
+      }
+    }
+
+    const warpUsage: Record<number, number> = {}
+    for (const harness of data.harnesses) {
+      warpUsage[harness.id] = 0
+    }
+    let threadedCount = 0
+    const unthreadedWarps: number[] = []
+    for (const warp of data.warpEnds) {
+      if (warp.harnessId !== null && warpUsage[warp.harnessId] !== undefined) {
+        warpUsage[warp.harnessId]++
+        threadedCount++
+      } else if (warp.harnessId === null) {
+        unthreadedWarps.push(warp.id)
+      }
+    }
+
+    const tempFloatWarnings = computeFloatWarnings(matrix, data.maxFloatLength)
+    const maxWarp = tempFloatWarnings
+      .filter((f) => f.type === 'warp')
+      .reduce((max, f) => Math.max(max, f.length), 0)
+    const maxWeft = tempFloatWarnings
+      .filter((f) => f.type === 'weft')
+      .reduce((max, f) => Math.max(max, f.length), 0)
+    const totalFloat = tempFloatWarnings.reduce((sum, f) => sum + f.length, 0)
+    const avgFloat = tempFloatWarnings.length > 0 ? totalFloat / tempFloatWarnings.length : 0
+
+    const mockValidation: ValidationResult = {
+      isValid: true,
+      errors: [],
+      warnings: [],
+      floatWarnings: tempFloatWarnings,
+      unthreadedWarps,
+      duplicateThreadedWarps: {},
+      unlinkedHarnesses,
+    }
+
+    const mockStats: DesignStats = {
+      warpUsage,
+      maxWarpFloat: maxWarp,
+      maxWeftFloat: maxWeft,
+      averageFloatLength: Math.round(avgFloat * 100) / 100,
+      errorCount: 0,
+      warningCount: 0,
+      totalWarps: data.warpEnds.length,
+      threadedWarps: threadedCount,
+      unthreadedWarps: data.warpEnds.length - threadedCount,
+    }
+
+    return calculateWeaveScore(design, mockValidation, mockStats, tempFloatWarnings)
+  }
+
   function setHarnessCount(count: number) {
     if (count <= 0) return
     harnessCount.value = count
@@ -331,7 +563,8 @@ export const useWeaveStore = defineStore('weave', () => {
 
   function setWarpHarness(warpId: number, harnessId: number | null) {
     const warp = warpEnds.value.find((w) => w.id === warpId)
-    if (warp) {
+    if (warp && warp.harnessId !== harnessId) {
+      saveHistory(`修改经线 ${warpId} 穿线`)
       warp.harnessId = harnessId
     }
   }
@@ -339,6 +572,7 @@ export const useWeaveStore = defineStore('weave', () => {
   function toggleTreadleHarness(treadleId: number, harnessId: number) {
     const tread = treadles.value.find((t) => t.id === treadleId)
     if (!tread) return
+    saveHistory(`修改踏板 ${treadleId} 关联`)
     const idx = tread.harnessIds.indexOf(harnessId)
     if (idx >= 0) {
       tread.harnessIds.splice(idx, 1)
@@ -348,6 +582,7 @@ export const useWeaveStore = defineStore('weave', () => {
   }
 
   function addTreadle() {
+    saveHistory('添加踏板')
     const maxId = treadles.value.reduce((max, t) => Math.max(max, t.id), 0)
     treadles.value.push({
       id: maxId + 1,
@@ -357,6 +592,7 @@ export const useWeaveStore = defineStore('weave', () => {
   }
 
   function removeTreadle(id: number) {
+    saveHistory(`删除踏板 ${id}`)
     treadles.value = treadles.value.filter((t) => t.id !== id)
   }
 
@@ -526,6 +762,14 @@ export const useWeaveStore = defineStore('weave', () => {
     warpFloatWarningSet,
     validation,
     stats,
+    score,
+    riskHotspots,
+    sortedIssues,
+    optimizationSuggestions,
+    canUndo,
+    canRedo,
+    undoStack,
+    redoStack,
     setHarnessCount,
     setWarpCount,
     setMaxFloatLength,
@@ -536,6 +780,13 @@ export const useWeaveStore = defineStore('weave', () => {
     exportDesign,
     importDesign,
     resetDesign,
+    undo,
+    redo,
+    saveHistory,
+    applySuggestionChanges,
+    applyAllSuggestions,
+    previewSuggestion,
+    calculateScoreForData,
   }
 })
 

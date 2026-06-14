@@ -5,6 +5,7 @@ import ThreadingMatrix from '@/components/ThreadingMatrix.vue'
 import WeavePreview from '@/components/WeavePreview.vue'
 import StatsPanel from '@/components/StatsPanel.vue'
 import ImportExport from '@/components/ImportExport.vue'
+import ScoreCenter from '@/components/ScoreCenter.vue'
 </script>
 
 <template>
@@ -30,6 +31,7 @@ import ImportExport from '@/components/ImportExport.vue'
       </section>
 
       <aside class="sidebar-right">
+        <ScoreCenter />
         <WeavePreview />
         <StatsPanel />
       </aside>

@@ -61,3 +61,99 @@ export interface ExportData {
   warpEnds: WarpEnd[]
   treadles: Treadle[]
 }
+
+export interface DeductionItem {
+  id: string
+  category: 'weavability' | 'complexity' | 'stability' | 'materialFit'
+  severity: 'critical' | 'high' | 'medium' | 'low'
+  points: number
+  description: string
+  location?: {
+    type: 'harness' | 'warp' | 'treadle' | 'range'
+    ids?: number[]
+    startId?: number
+    endId?: number
+  }
+}
+
+export interface ScoreBreakdown {
+  weavability: number
+  complexity: number
+  stability: number
+  materialFit: number
+}
+
+export interface WeaveScore {
+  totalScore: number
+  grade: 'S' | 'A' | 'B' | 'C' | 'D' | 'F'
+  breakdown: ScoreBreakdown
+  deductions: DeductionItem[]
+  maxFloatPenalty: number
+  harnessBalancePenalty: number
+  errorPenalty: number
+  warningPenalty: number
+}
+
+export interface RiskHotspot {
+  id: string
+  type: 'harness' | 'warp' | 'treadle'
+  targetId: number
+  riskLevel: number
+  description: string
+}
+
+export type SuggestionImpact = 'minor' | 'moderate' | 'significant'
+
+export interface OptimizationSuggestion {
+  id: string
+  title: string
+  description: string
+  impact: SuggestionImpact
+  expectedScoreGain: number
+  affectedAreas: {
+    harnesses?: number[]
+    warps?: number[]
+    treadles?: number[]
+  }
+  adjustmentDirection: string
+  applyFn: () => void
+  previewData?: {
+    warpEnds?: WarpEnd[]
+    treadles?: Treadle[]
+    harnessCount?: number
+  }
+}
+
+export interface SortedIssue {
+  id: string
+  type: 'error' | 'warning' | 'risk'
+  priority: number
+  title: string
+  description: string
+  location?: {
+    type: 'harness' | 'warp' | 'treadle' | 'range'
+    ids?: number[]
+    startId?: number
+    endId?: number
+  }
+}
+
+export interface HistorySnapshot {
+  id: string
+  timestamp: number
+  description: string
+  data: ExportData
+  scoreSnapshot?: WeaveScore
+}
+
+export interface CompareViewData {
+  before: {
+    score: WeaveScore
+    data: ExportData
+  }
+  after: {
+    score: WeaveScore
+    data: ExportData
+  }
+  changes: string[]
+}
