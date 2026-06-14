@@ -12,9 +12,7 @@ const unlinkedSet = computed(() => new Set(store.validation.unlinkedHarnesses))
 function onCellClick(harnessIndex: number, warpIndex: number) {
   const warpId = warpIndex + 1
   const harnessId = harnessIndex + 1
-  if (matrix.value[harnessIndex][warpIndex] === 1) {
-    store.setWarpHarness(warpId, null)
-  } else {
+  if (matrix.value[harnessIndex][warpIndex] !== 1) {
     store.setWarpHarness(warpId, harnessId)
   }
 }

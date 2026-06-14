@@ -29,7 +29,35 @@ const warningCells = computed(() => {
   const maxFloat = store.maxFloatLength
   const rows = matrix.length
   const cols = matrix[0].length
+
+  const fullSameRows = new Set<number>()
   for (let t = 0; t < rows; t++) {
+    const first = matrix[t][0]
+    let allSame = true
+    for (let w = 1; w < cols; w++) {
+      if (matrix[t][w] !== first) {
+        allSame = false
+        break
+      }
+    }
+    if (allSame) fullSameRows.add(t)
+  }
+
+  const fullSameCols = new Set<number>()
+  for (let w = 0; w < cols; w++) {
+    const first = matrix[0][w]
+    let allSame = true
+    for (let t = 1; t < rows; t++) {
+      if (matrix[t][w] !== first) {
+        allSame = false
+        break
+      }
+    }
+    if (allSame) fullSameCols.add(w)
+  }
+
+  for (let t = 0; t < rows; t++) {
+    if (fullSameRows.has(t)) continue
     let start = -1
     for (let w = 0; w <= cols; w++) {
       const raised = w < cols && matrix[t][w] === 1
@@ -44,6 +72,7 @@ const warningCells = computed(() => {
     }
   }
   for (let w = 0; w < cols; w++) {
+    if (fullSameCols.has(w)) continue
     let start = -1
     for (let t = 0; t <= rows; t++) {
       const raised = t < rows && matrix[t][w] === 1
